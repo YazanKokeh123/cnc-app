@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: Params) {
   const bytes = await generateOrderDocument(order, kind);
   const filename = `${kind}-${order.order_number}.pdf`;
 
-  return new NextResponse(bytes, {
+  return new NextResponse(Buffer.from(bytes), {
     headers: {
       "content-type": "application/pdf",
       "content-disposition": `attachment; filename="${filename}"`
