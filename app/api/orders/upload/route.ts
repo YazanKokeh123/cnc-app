@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const parsed = await parseOrderPdf(buffer);
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const storagePath = `${parsed.order_number}/${Date.now()}-${file.name}`;
 
   const { error: uploadError } = await supabase.storage.from("order-pdfs").upload(storagePath, buffer, {
