@@ -3,7 +3,7 @@ import { createSupabaseServerClient, hasSupabaseConfig } from "@/lib/supabase/se
 
 export async function listOrders(): Promise<Order[]> {
   if (!hasSupabaseConfig()) return [];
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("orders")
     .select("*, positions:order_positions(*)")
@@ -15,7 +15,7 @@ export async function listOrders(): Promise<Order[]> {
 
 export async function getOrder(id: string): Promise<Order | null> {
   if (!hasSupabaseConfig()) return null;
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("orders")
     .select("*, positions:order_positions(*)")
@@ -31,7 +31,7 @@ export async function getOrder(id: string): Promise<Order | null> {
 }
 
 export async function createOrderFromParsed(parsed: ParsedOrder, sourcePdfPath: string | null) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -60,7 +60,7 @@ export async function createOrderFromParsed(parsed: ParsedOrder, sourcePdfPath: 
 }
 
 export async function updateOrderFields(id: string, formData: FormData) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const delivered = formData.get("delivered") === "on";
   const paid = formData.get("paid") === "on";
   const sentDate = String(formData.get("sent_date") || "") || null;
@@ -80,7 +80,7 @@ export async function updateOrderFields(id: string, formData: FormData) {
 }
 
 export async function updatePositionStatus(id: string, status: OrderPosition["status"]) {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from("order_positions").update({ status }).eq("id", id);
   if (error) throw error;
 }
