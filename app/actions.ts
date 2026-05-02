@@ -1,24 +1,23 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { updateOrderFields, updatePositionStatus } from "@/lib/orders";
-import type { PositionStatus } from "@/lib/types";
+import { updateOrderFields, updatePositionFields } from "@/lib/orders";
 
-export async function saveOrderFields(orderId: string, formData: FormData) {
+export async function saveOrderFields(formData: FormData) {
+  const orderId = String(formData.get("order_id") || "");
+  if (!orderId) return;
+
   await updateOrderFields(orderId, formData);
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
 }
 
-export async function savePositionStatus(orderId: string, positionId: string, formData: FormData) {
-  const status = String(formData.get("status")) as PositionStatus;
-  if (!["open", "in_progress", "done"].includes(status)) return;
-  await updatePositionStatus(positionId, status);
+export async function savePositionFields(formData: FormData) {
+  const orderId = String(formData.get("order_id") || "");
+  const positionId = String(formData.get("position_id") || "");
+  if (!orderId || !positionId) return;
+
+  await updatePositionFields(positionId, formData);
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
-}
-
-export async function goToOrder(orderId: string) {
-  redirect(`/orders/${orderId}`);
 }
