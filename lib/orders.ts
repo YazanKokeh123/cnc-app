@@ -118,13 +118,10 @@ function parsePositionStatus(value: FormDataEntryValue | null): PositionStatus {
 }
 
 function parseNumber(value: FormDataEntryValue | null) {
-  const normalized = String(value || "")
-    .trim()
-    .replace(/\s/g, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
+  const raw = String(value || "").trim().replace(/\s/g, "");
+  if (!raw) return null;
 
-  if (!normalized) return null;
-  const number = Number.parseFloat(normalized);
+  const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const number = Number.parseFloat(normalized.replace(/[^\d.-]/g, ""));
   return Number.isFinite(number) ? number : null;
 }
