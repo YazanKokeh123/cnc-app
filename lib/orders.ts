@@ -1,5 +1,7 @@
-import type { Order, OrderPosition, ParsedOrder } from "@/lib/types";
+import type { Order, OrderPosition, ParsedOrder, PositionStatus } from "@/lib/types";
 import { createSupabaseServerClient, hasSupabaseConfig } from "@/lib/supabase/server";
+
+const positionStatuses: PositionStatus[] = ["open", "in_progress", "done"];
 
 export async function listOrders(): Promise<Order[]> {
   if (!hasSupabaseConfig()) return [];
@@ -79,8 +81,50 @@ export async function updateOrderFields(id: string, formData: FormData) {
   if (error) throw error;
 }
 
+export async function updatePositionFields(id: string, formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  const status = parsePositionStatus(formData.get("status"));
+
+  const { error } = await supabase
+    .from("order_positions")
+    .update({
+      pos_number: cleanText(formData.get("pos_number")),
+      quantity: parseNumber(formData.get("quantity")) ?? 0,
+      unit: cleanText(formData.get("unit")) || "ST",
+      description: cleanText(formData.get("description")),
+      drawing_number: cleanText(formData.get("drawing_number")) || null,
+      unit_price: parseNumber(formData.get("unit_price")),
+      total_price: parseNumber(formData.get("total_price")),
+      status
+    })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
 export async function updatePositionStatus(id: string, status: OrderPosition["status"]) {
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.from("order_positions").update({ status }).eq("id", id);
   if (error) throw error;
+}
+
+function cleanText(value: FormDataEntryValue | null) {
+  return String(value || "").trim();
+}
+
+function parsePositionStatus(value: FormDataEntryValue | null): PositionStatus {
+  const status = String(value || "open") as PositionStatus;
+  return positionStatuses.includes(status) ? status : "open";
+}
+
+function parseNumber(value: FormDataEntryValue | null) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  if (!normalized) return null;
+  const number = Number.parseFloat(normalized);
+  return Number.isFinite(number) ? number : null;
 }
