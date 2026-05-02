@@ -123,47 +123,61 @@ function mergeDuplicatePositions(positions: ParsedOrderPosition[]) {
   return [...merged.values()];
 }
 
+function compareItemPosition(left: PdfTextItem, right: PdfTextItem) {
+  return left.stream - right.stream || left.y - right.y || left.x - right.x;
+}
+
+function isAfterPositionStart(item: PdfTextItem, start: PdfTextItem) {
+  return item.stream > start.stream || (item.stream === start.stream && item.y >= start.y - 2);
+}
+
+function isBeforeNextPosition(item: PdfTextItem, nextStart: PdfTextItem | undefined) {
+  if (!nextStart) return true;
+  return item.stream < nextStart.stream || (item.stream === nextStart.stream && item.y < nextStart.y - 2);
+}
+
+function isHeinzBergerPositionStart(item: PdfTextItem, pageItems: PdfTextItem[]) {
+  if (item.x < 80 || item.x > 145 || item.y < 350 || !/^\d{1,4}$/.test(item.text)) return false;
+  const sameLine = pageItems.filter((candidate) => candidate.stream === item.stream && Math.abs(candidate.y - item.y) <= 3);
+  return sameLine.some((candidate) => candidate.x >= 420 && candidate.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(candidate.text.trim())) && sameLine.some((candidate) => candidate.x >= 430 && candidate.x <= 525 && /ST|St/i.test(candidate.text)) && sameLine.some((candidate) => candidate.x >= 560 && candidate.x <= 1300);
+}
+
 function parsePositionedHeinzBerger(items: PdfTextItem[]) {
   const positions: ParsedOrderPosition[] = [];
   const deliveryDates: string[] = [];
-  const textInReadingOrder = [...items].sort((a, b) => a.stream - b.stream || a.y - b.y || a.x - b.x).map((item) => item.text).join(" ");
+  const orderedItems = [...items].sort(compareItemPosition);
+  const textInReadingOrder = orderedItems.map((item) => item.text).join(" ");
   const orderHeaderDate = textInReadingOrder.match(/Bestellung\s+\d+\s+vom\s+(\d{1,2}\s*\.?\s*\d{1,2}\s*\.?\s*\d{4})/i)?.[1];
+  const starts = orderedItems.filter((item) => isHeinzBergerPositionStart(item, orderedItems));
 
-  for (const stream of new Set(items.map((item) => item.stream))) {
-    const pageItems = items.filter((item) => item.stream === stream).sort((a, b) => a.y - b.y || a.x - b.x);
-    const starts = pageItems.filter((item) => {
-      if (item.x < 80 || item.x > 145 || item.y < 350 || !/^\d{1,4}$/.test(item.text)) return false;
-      const sameLine = pageItems.filter((candidate) => Math.abs(candidate.y - item.y) <= 3);
-      return sameLine.some((candidate) => candidate.x >= 420 && candidate.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(candidate.text.trim())) && sameLine.some((candidate) => candidate.x >= 430 && candidate.x <= 525 && /ST|St/i.test(candidate.text)) && sameLine.some((candidate) => candidate.x >= 560 && candidate.x <= 1300);
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index];
+    const nextStart = starts[index + 1];
+    const block = orderedItems.filter((item) => isAfterPositionStart(item, start) && isBeforeNextPosition(item, nextStart));
+    const sameLine = block.filter((item) => item.stream === start.stream && Math.abs(item.y - start.y) <= 3);
+    const quantityText = sameLine.find((item) => item.x >= 420 && item.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(item.text.trim()))?.text;
+    const unitText = sameLine.find((item) => item.x >= 430 && item.x <= 525 && /ST|St/i.test(item.text))?.text.trim() || "ST";
+    const drawingLabel = block.find((item) => item.x >= 560 && item.x <= 850 && /Zeichnu|ngsnr/i.test(item.text));
+    const fallbackDescriptionEnd = { ...start, y: start.y + 120 };
+    const descriptionEnd = drawingLabel ?? fallbackDescriptionEnd;
+    const description = cleanDescription(block.filter((item) => item.x >= 560 && item.x <= 1300 && compareItemPosition(item, descriptionEnd) < 0 && !/Liefer|Position|Zeich|Hersteller|Artikel|Auftrag/i.test(item.text)).sort(compareItemPosition).map((item) => item.text.trim()).join(" "));
+    const drawingNumber = drawingLabel ? cleanDrawingNumber(block.filter((item) => item.stream === drawingLabel.stream && item.y >= drawingLabel.y - 3 && item.y <= drawingLabel.y + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join("")) : null;
+    const deliveryDate = block.filter((item) => item.x >= 1450 && item.x <= 1605).map((item) => item.text.replace(/\s+/g, "")).find((text) => /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text));
+    if (deliveryDate) deliveryDates.push(deliveryDate);
+    const priceLine = block.find((item) => item.x >= 560 && item.x <= 850 && /Positionspreis/i.test(item.text));
+    const priceItems = priceLine ? block.filter((item) => item.stream === priceLine.stream && Math.abs(item.y - priceLine.y) <= 3) : [];
+    const unitPriceText = priceItems.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
+    const totalPriceText = priceItems.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
+    if (!description) continue;
+    positions.push({
+      pos_number: start.text,
+      quantity: Number.parseFloat((quantityText ?? "0").replace(",", ".")) || 0,
+      unit: unitText.replace(".", "").trim(),
+      description,
+      drawing_number: drawingNumber,
+      unit_price: parseGermanMoney(unitPriceText),
+      total_price: parseGermanMoney(totalPriceText)
     });
-
-    for (let index = 0; index < starts.length; index += 1) {
-      const start = starts[index];
-      const nextStartY = starts[index + 1]?.y ?? Number.POSITIVE_INFINITY;
-      const block = pageItems.filter((item) => item.y >= start.y - 2 && item.y < nextStartY - 2);
-      const sameLine = block.filter((item) => Math.abs(item.y - start.y) <= 3);
-      const quantityText = sameLine.find((item) => item.x >= 420 && item.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(item.text.trim()))?.text;
-      const unitText = sameLine.find((item) => item.x >= 430 && item.x <= 525 && /ST|St/i.test(item.text))?.text.trim() || "ST";
-      const drawingLabelY = block.find((item) => item.x >= 560 && item.x <= 850 && /Zeichnu|ngsnr/i.test(item.text))?.y ?? start.y + 120;
-      const description = cleanDescription(block.filter((item) => item.x >= 560 && item.x <= 1300 && item.y >= start.y - 2 && item.y < drawingLabelY - 2 && !/Liefer|Position|Zeich|Hersteller|Artikel|Auftrag/i.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join(" "));
-      const drawingNumber = cleanDrawingNumber(block.filter((item) => item.y >= drawingLabelY - 3 && item.y <= drawingLabelY + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join(""));
-      const deliveryDate = block.filter((item) => item.x >= 1450 && item.x <= 1605).map((item) => item.text.replace(/\s+/g, "")).find((text) => /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text));
-      if (deliveryDate) deliveryDates.push(deliveryDate);
-      const priceLineY = block.find((item) => item.x >= 560 && item.x <= 850 && /Positionspreis/i.test(item.text))?.y;
-      const priceLine = priceLineY ? block.filter((item) => Math.abs(item.y - priceLineY) <= 3) : [];
-      const unitPriceText = priceLine.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
-      const totalPriceText = priceLine.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
-      if (!description) continue;
-      positions.push({
-        pos_number: start.text,
-        quantity: Number.parseFloat((quantityText ?? "0").replace(",", ".")) || 0,
-        unit: unitText.replace(".", "").trim(),
-        description,
-        drawing_number: drawingNumber,
-        unit_price: parseGermanMoney(unitPriceText),
-        total_price: parseGermanMoney(totalPriceText)
-      });
-    }
   }
 
   return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions: mergeDuplicatePositions(positions) };
