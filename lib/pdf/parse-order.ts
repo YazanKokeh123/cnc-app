@@ -104,6 +104,25 @@ function cleanDrawingNumber(value: string) {
   return cleaned || null;
 }
 
+function mergeDuplicatePositions(positions: ParsedOrderPosition[]) {
+  const merged = new Map<string, ParsedOrderPosition>();
+  for (const position of positions) {
+    const key = [position.description.toLowerCase().replace(/\s+/g, " ").trim(), position.drawing_number?.toLowerCase().replace(/\s+/g, "") ?? ""].join("|");
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...position });
+      continue;
+    }
+    existing.pos_number = `${existing.pos_number}, ${position.pos_number}`;
+    existing.quantity += position.quantity;
+    existing.total_price = (existing.total_price ?? 0) + (position.total_price ?? 0);
+    if (existing.total_price !== null && existing.quantity > 0) {
+      existing.unit_price = Number((existing.total_price / existing.quantity).toFixed(2));
+    }
+  }
+  return [...merged.values()];
+}
+
 function parsePositionedHeinzBerger(items: PdfTextItem[]) {
   const positions: ParsedOrderPosition[] = [];
   const deliveryDates: string[] = [];
@@ -130,8 +149,10 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
       const drawingNumber = cleanDrawingNumber(block.filter((item) => item.y >= drawingLabelY - 3 && item.y <= drawingLabelY + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join(""));
       const deliveryDate = block.filter((item) => item.x >= 1450 && item.x <= 1605).map((item) => item.text.replace(/\s+/g, "")).find((text) => /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text));
       if (deliveryDate) deliveryDates.push(deliveryDate);
-      const unitPriceText = block.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
-      const totalPriceText = block.filter((item) => item.x >= 2100 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
+      const priceLineY = block.find((item) => item.x >= 560 && item.x <= 850 && /Positionspreis/i.test(item.text))?.y;
+      const priceLine = priceLineY ? block.filter((item) => Math.abs(item.y - priceLineY) <= 3) : [];
+      const unitPriceText = priceLine.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
+      const totalPriceText = priceLine.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
       if (!description) continue;
       positions.push({
         pos_number: start.text,
@@ -145,7 +166,7 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
     }
   }
 
-  return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions };
+  return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions: mergeDuplicatePositions(positions) };
 }
 
 export async function parseOrderPdf(buffer: Buffer): Promise<ParsedOrder> {
@@ -156,7 +177,7 @@ export async function parseOrderPdf(buffer: Buffer): Promise<ParsedOrder> {
   const orderNumber = findFirst(text, [/Bestellung\s+(\d+)/i, /Bestell(?:ung|nummer|[\s-]*Nr\.?)\s*:?\s*([A-Z0-9\-/]+)/i, /Auftrags(?:nummer|[\s-]*Nr\.?)\s*:?\s*([A-Z0-9\-/]+)/i, /Unsere Bestellung\s*:?\s*([A-Z0-9\-/]+)/i]);
   const orderDate = heinzBerger?.orderDate ?? toIsoDate(findFirst(text, [/Bestellung\s+\d+\s+vom\s+(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Bestelldatum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Datum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i]));
   const deliveryDeadline = heinzBerger?.deliveryDeadline ?? toIsoDate(findFirst(text, [/Liefertermin\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Lieferdatum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i]));
-  const positions = heinzBerger?.positions.length ? heinzBerger.positions : extractLinePositions(text);
+  const positions = heinzBerger?.positions.length ? heinzBerger.positions : mergeDuplicatePositions(extractLinePositions(text));
 
   return { customer_name: extractCustomer(text), order_number: orderNumber || `PDF-${Date.now()}`, order_date: orderDate, delivery_deadline: deliveryDeadline, positions };
 }
