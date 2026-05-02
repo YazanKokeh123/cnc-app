@@ -1,20 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download, FileText, Save, Send } from "lucide-react";
-import { saveOrderFields, savePositionFields } from "@/app/actions";
-import { StatusBadge } from "@/components/status-badge";
+import { Download, FileText } from "lucide-react";
+import { OrderFieldsForm } from "@/components/order-fields-form";
+import { PositionTable } from "@/components/position-table";
 import { formatDate, isDeadlineWarning } from "@/lib/date";
 import { formatCurrency } from "@/lib/money";
 import { getOrder } from "@/lib/orders";
-import type { PositionStatus } from "@/lib/types";
 
 type Props = { params: Promise<{ id: string }> };
-
-const statusOptions: Array<{ value: PositionStatus; label: string }> = [
-  { value: "open", label: "Offen" },
-  { value: "in_progress", label: "In Arbeit" },
-  { value: "done", label: "Fertig" }
-];
 
 export default async function OrderDetailPage({ params }: Props) {
   const { id } = await params;
@@ -53,70 +46,10 @@ export default async function OrderDetailPage({ params }: Props) {
           </dl>
         </div>
 
-        <form action={saveOrderFields} className="rounded border border-slate-200 bg-white p-5 shadow-panel">
-          <input type="hidden" name="order_id" value={order.id} />
-          <h2 className="text-base font-semibold text-graphite">Versand und Zahlung</h2>
-          <label className="mt-4 flex items-center gap-3 text-sm font-medium text-graphite"><input type="checkbox" name="delivered" defaultChecked={order.delivered} className="h-4 w-4" />Geliefert / gesendet</label>
-          <label className="mt-3 block text-sm text-steel">Versanddatum<input type="date" name="sent_date" defaultValue={order.sent_date ?? ""} className="mt-1 h-10 w-full rounded border border-slate-300 px-3 text-graphite" /></label>
-          <label className="mt-4 flex items-center gap-3 text-sm font-medium text-graphite"><input type="checkbox" name="paid" defaultChecked={order.paid} className="h-4 w-4" />Bezahlt</label>
-          <label className="mt-3 block text-sm text-steel">Zahlungsdatum<input type="date" name="paid_date" defaultValue={order.paid_date ?? ""} className="mt-1 h-10 w-full rounded border border-slate-300 px-3 text-graphite" /></label>
-          <button className="mt-5 inline-flex h-10 items-center gap-2 rounded bg-signal px-3 text-sm font-semibold text-white hover:bg-orange-700"><Send size={16} />Speichern</button>
-        </form>
+        <OrderFieldsForm order={order} />
       </section>
 
-      <section className="overflow-x-auto rounded border border-slate-200 bg-white shadow-panel">
-        <div className="min-w-[1120px]">
-          <div className="grid grid-cols-[90px_130px_1fr_180px_150px_220px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-steel"><span>Pos</span><span>Menge</span><span>Beschreibung</span><span>Zeichnung</span><span>Preis</span><span>Status</span></div>
-          {positions.map((position) => (
-            <form key={position.id} action={savePositionFields} className="grid grid-cols-[90px_130px_1fr_180px_150px_220px] items-start gap-3 border-b border-slate-100 px-4 py-4 text-sm">
-              <input type="hidden" name="order_id" value={order.id} />
-              <input type="hidden" name="position_id" value={position.id} />
-              <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                Pos
-                <input name="pos_number" defaultValue={position.pos_number} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-semibold normal-case tracking-normal text-graphite" />
-              </label>
-              <div className="grid grid-cols-[1fr_54px] gap-2">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Menge
-                  <input name="quantity" inputMode="decimal" defaultValue={formatNumberInput(position.quantity)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                </label>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  EH
-                  <input name="unit" defaultValue={position.unit} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                </label>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Beschreibung
-                  <textarea name="description" defaultValue={position.description} rows={2} className="mt-1 w-full resize-y rounded border border-slate-300 px-2 py-2 text-sm font-medium normal-case tracking-normal text-graphite" />
-                </label>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Einzelpreis
-                  <input name="unit_price" inputMode="decimal" defaultValue={formatNumberInput(position.unit_price)} className="mt-1 h-9 w-36 rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                </label>
-              </div>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                Zeichnung
-                <input name="drawing_number" defaultValue={position.drawing_number ?? ""} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-              </label>
-              <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                Preis
-                <input name="total_price" inputMode="decimal" defaultValue={formatNumberInput(position.total_price)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-              </label>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-24">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-steel">Status</span>
-                  <StatusBadge status={position.status} />
-                </div>
-                <select name="status" defaultValue={position.status} className="h-9 rounded border border-slate-300 bg-white px-2 text-sm">
-                  {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-                <button className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 px-3 text-xs font-semibold text-graphite hover:bg-slate-50"><Save size={14} />OK</button>
-              </div>
-            </form>
-          ))}
-        </div>
-      </section>
+      <PositionTable orderId={order.id} positions={positions} />
     </div>
   );
 }
@@ -128,8 +61,4 @@ function Info({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 text-sm font-semibold text-graphite">{value}</dd>
     </div>
   );
-}
-
-function formatNumberInput(value: number | null) {
-  return value == null ? "" : String(value);
 }
