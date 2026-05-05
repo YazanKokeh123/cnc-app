@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Fragment, useState, useTransition } from "react";
 import { Check, ChevronDown, ChevronUp, Pencil, X } from "lucide-react";
+import clsx from "clsx";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCurrency } from "@/lib/money";
 import type { OrderPosition, PositionStatus } from "@/lib/types";
@@ -96,7 +97,7 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
               </form>
             ) : (
               <div className="grid grid-cols-[70px_100px_1fr_170px_130px_210px] items-center border-b border-slate-100 px-4 py-4 text-sm">
-                <span className="font-semibold text-graphite">{position.pos_number}</span>
+                <span className={clsx("font-semibold", isFinishingPosition(position) ? "text-emerald-700" : "text-graphite")}>{position.pos_number}</span>
                 <span>{position.quantity} {position.unit}</span>
                 <span><span className="block font-medium text-graphite">{position.description}</span><span className="text-steel">EP {formatCurrency(position.unit_price)}</span></span>
                 <span className="flex items-center gap-2">
@@ -120,7 +121,7 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
               <div className="border-b border-slate-100 bg-slate-50 px-4 py-4">
                 <div className="rounded border border-slate-200 bg-white p-3">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-steel">Zeichnung {position.drawing_number}</div>
-                  <iframe title={`Zeichnung ${position.drawing_number}`} src={`/api/orders/${orderId}/positions/${position.id}/drawing`} className="h-[680px] w-full rounded border border-slate-200 bg-white" />
+                  <iframe title={`Zeichnung ${position.drawing_number}`} src={`/api/positions/${position.id}/drawing`} className="h-[680px] w-full rounded border border-slate-200 bg-white" />
                 </div>
               </div>
             ) : null}
@@ -133,4 +134,8 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
 
 function formatNumberInput(value: number | null) {
   return value == null ? "" : String(value);
+}
+
+function isFinishingPosition(position: OrderPosition) {
+  return /vernickeln|br[uü]hnieren/i.test(position.description);
 }
