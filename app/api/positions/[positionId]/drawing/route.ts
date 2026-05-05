@@ -17,20 +17,22 @@ export async function GET(_request: Request, { params }: Params) {
   const { positionId } = await params;
   const supabase = await createSupabaseServerClient();
 
-  const { data: position, error: positionError } = await supabase
+  const { data: positionData, error: positionError } = await supabase
     .from("order_positions")
     .select("drawing_number, order_id")
     .eq("id", positionId)
-    .single<PositionRow>();
+    .single();
+  const position = positionData as PositionRow | null;
 
   if (positionError || !position) return NextResponse.json({ error: "Position nicht gefunden." }, { status: 404 });
   if (!position.drawing_number) return NextResponse.json({ error: "Keine Zeichnungsnummer vorhanden." }, { status: 404 });
 
-  const { data: order, error: orderError } = await supabase
+  const { data: orderData, error: orderError } = await supabase
     .from("orders")
     .select("source_pdf_path")
     .eq("id", position.order_id)
-    .single<OrderRow>();
+    .single();
+  const order = orderData as OrderRow | null;
 
   if (orderError || !order?.source_pdf_path) return NextResponse.json({ error: "Original-PDF nicht gespeichert." }, { status: 404 });
 
