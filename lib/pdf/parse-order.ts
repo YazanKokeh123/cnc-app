@@ -47,7 +47,7 @@ function extractLinePositions(text: string): ParsedOrderPosition[] {
       quantity: Number.parseFloat(quantity.replace(",", ".")) || 0,
       unit: unit.replace(".", ""),
       description: rawDescription.replace(/\s+(?:Zeichnung|Zg\.?|Zeichnungsnr\.?).*$/i, "").trim(),
-      drawing_number: drawingMatch?.[1] ?? null,
+      drawing_number: drawingMatch?.[1] ? cleanDrawingNumber(drawingMatch[1]) : null,
       unit_price: parseGermanMoney(unitPrice),
       total_price: parseGermanMoney(totalPrice)
     });
@@ -100,12 +100,20 @@ function cleanDescription(value: string) {
 }
 
 function cleanDrawingNumber(value: string) {
-  const cleaned = value.replace(/\s+/g, "").replace(/--+/g, "-").replace(/^-+|-+$/g, "");
+  const cleaned = value
+    .replace(/\s+/g, "")
+    .replace(/--+/g, "-")
+    .replace(/-[A-Z]$/i, "")
+    .replace(/^-+|-+$/g, "");
   return cleaned || null;
 }
 
 function isFooterText(text: string) {
   return /Stadtsparkasse|Volksbank|IBAN|SWIFT|\bBIC\b|Wuppertal|Gesch[aä]ftsf[uü]hrer|Amtsgericht|USt-?Id|www\.|@/.test(text);
+}
+
+function isPageNoise(item: PdfTextItem) {
+  return isFooterText(item.text) || /^(Seite|Page)\b/i.test(item.text) || /Heinz Berger Maschinenfabrik/i.test(item.text);
 }
 
 function mergeDuplicatePositions(positions: ParsedOrderPosition[]) {
@@ -162,19 +170,18 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
     const start = starts[index];
     const nextStart = starts[index + 1];
     const block = orderedItems.filter((item) => isAfterPositionStart(item, start) && isBeforeNextPosition(item, nextStart));
-    const footerStart = block.find((item) => item.x >= 520 && isFooterText(item.text));
-    const contentBlock = footerStart ? block.filter((item) => compareItemPosition(item, footerStart) < 0) : block;
+    const contentBlock = block.filter((item) => !isPageNoise(item));
     const sameLine = contentBlock.filter((item) => item.stream === start.stream && Math.abs(item.y - start.y) <= 3);
     const quantityText = sameLine.find((item) => item.x >= 420 && item.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(item.text.trim()))?.text;
     const unitText = sameLine.find((item) => item.x >= 430 && item.x <= 525 && /ST|St/i.test(item.text))?.text.trim() || "ST";
     const drawingLabel = contentBlock.find((item) => item.x >= 560 && item.x <= 850 && /Zeichnu|ngsnr/i.test(item.text));
+    const priceLine = contentBlock.find((item) => item.x >= 560 && item.x <= 850 && /Positionspreis/i.test(item.text));
     const fallbackDescriptionEnd = { ...start, y: start.y + 120 };
-    const descriptionEnd = earliestItem(drawingLabel, footerStart, fallbackDescriptionEnd) ?? fallbackDescriptionEnd;
-    const description = cleanDescription(contentBlock.filter((item) => item.x >= 560 && item.x <= 1300 && compareItemPosition(item, descriptionEnd) < 0 && !isFooterText(item.text) && !/Liefer|Position|Zeich|Hersteller|Artikel|Auftrag/i.test(item.text)).sort(compareItemPosition).map((item) => item.text.trim()).join(" "));
+    const descriptionEnd = earliestItem(drawingLabel, priceLine, fallbackDescriptionEnd) ?? fallbackDescriptionEnd;
+    const description = cleanDescription(contentBlock.filter((item) => item.x >= 560 && item.x <= 1300 && compareItemPosition(item, descriptionEnd) < 0 && !/Liefer|Position|Zeich|Hersteller|Artikel|Auftrag/i.test(item.text)).sort(compareItemPosition).map((item) => item.text.trim()).join(" "));
     const drawingNumber = drawingLabel ? cleanDrawingNumber(contentBlock.filter((item) => item.stream === drawingLabel.stream && item.y >= drawingLabel.y - 3 && item.y <= drawingLabel.y + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join("")) : null;
     const deliveryDate = contentBlock.filter((item) => item.x >= 1450 && item.x <= 1605).map((item) => item.text.replace(/\s+/g, "")).find((text) => /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text));
     if (deliveryDate) deliveryDates.push(deliveryDate);
-    const priceLine = contentBlock.find((item) => item.x >= 560 && item.x <= 850 && /Positionspreis/i.test(item.text));
     const priceItems = priceLine ? contentBlock.filter((item) => item.stream === priceLine.stream && Math.abs(item.y - priceLine.y) <= 3) : [];
     const unitPriceText = priceItems.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
     const totalPriceText = priceItems.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
