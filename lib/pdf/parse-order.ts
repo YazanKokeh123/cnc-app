@@ -42,7 +42,7 @@ function extractLinePositions(text: string): ParsedOrderPosition[] {
     const [, posNumber, quantity, unit, rawDescription, unitPrice, totalPrice] = match;
     const nextLine = lines[index + 1] ?? "";
     const drawingMatch = rawDescription.match(/(?:Zeichnung|Zg\.?|Zeichnungsnr\.?)\s*:?\s*([A-Z0-9_.\-/]+)/i) ?? nextLine.match(/(?:Zeichnung|Zg\.?|Zeichnungsnr\.?)\s*:?\s*([A-Z0-9_.\-/]+)/i);
-    positions.push({
+    positions.push(finalizePosition({
       pos_number: posNumber,
       quantity: Number.parseFloat(quantity.replace(",", ".")) || 0,
       unit: unit.replace(".", ""),
@@ -50,7 +50,7 @@ function extractLinePositions(text: string): ParsedOrderPosition[] {
       drawing_number: drawingMatch?.[1] ? cleanDrawingNumber(drawingMatch[1]) : null,
       unit_price: parseGermanMoney(unitPrice),
       total_price: parseGermanMoney(totalPrice)
-    });
+    }));
   }
 
   return positions;
@@ -106,6 +106,17 @@ function cleanDrawingNumber(value: string) {
     .replace(/-[A-Z]$/i, "")
     .replace(/^-+|-+$/g, "");
   return cleaned || null;
+}
+
+function isDrawingNumber(value: string) {
+  return /^(?:N[ML])?\d{6,10}(?:-[A-Z])?$/i.test(value.replace(/\s+/g, ""));
+}
+
+function finalizePosition(position: ParsedOrderPosition): ParsedOrderPosition {
+  if ((!position.unit_price || position.unit_price === 0) && position.total_price && position.quantity > 0) {
+    return { ...position, unit_price: Number((position.total_price / position.quantity).toFixed(2)) };
+  }
+  return position;
 }
 
 function isFooterText(text: string) {
@@ -179,14 +190,16 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
     const fallbackDescriptionEnd = { ...start, y: start.y + 120 };
     const descriptionEnd = earliestItem(drawingLabel, priceLine, fallbackDescriptionEnd) ?? fallbackDescriptionEnd;
     const description = cleanDescription(contentBlock.filter((item) => item.x >= 560 && item.x <= 1300 && compareItemPosition(item, descriptionEnd) < 0 && !/Liefer|Position|Zeich|Hersteller|Artikel|Auftrag/i.test(item.text)).sort(compareItemPosition).map((item) => item.text.trim()).join(" "));
-    const drawingNumber = drawingLabel ? cleanDrawingNumber(contentBlock.filter((item) => item.stream === drawingLabel.stream && item.y >= drawingLabel.y - 3 && item.y <= drawingLabel.y + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join("")) : null;
+    const labeledDrawingNumber = drawingLabel ? cleanDrawingNumber(contentBlock.filter((item) => item.stream === drawingLabel.stream && item.y >= drawingLabel.y - 3 && item.y <= drawingLabel.y + 3 && item.x >= 1300 && item.x <= 1700).sort((a, b) => a.x - b.x).map((item) => item.text.trim()).join("")) : null;
+    const fallbackDrawingNumber = contentBlock.filter((item) => item.x >= 1260 && item.x <= 1760 && isDrawingNumber(item.text)).sort(compareItemPosition).map((item) => cleanDrawingNumber(item.text)).find(Boolean) ?? null;
+    const drawingNumber = labeledDrawingNumber ?? fallbackDrawingNumber;
     const deliveryDate = contentBlock.filter((item) => item.x >= 1450 && item.x <= 1605).map((item) => item.text.replace(/\s+/g, "")).find((text) => /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(text));
     if (deliveryDate) deliveryDates.push(deliveryDate);
     const priceItems = priceLine ? contentBlock.filter((item) => item.stream === priceLine.stream && Math.abs(item.y - priceLine.y) <= 3) : [];
     const unitPriceText = priceItems.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
     const totalPriceText = priceItems.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
     if (!description) continue;
-    positions.push({
+    positions.push(finalizePosition({
       pos_number: start.text,
       quantity: Number.parseFloat((quantityText ?? "0").replace(",", ".")) || 0,
       unit: unitText.replace(".", "").trim(),
@@ -194,7 +207,7 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
       drawing_number: drawingNumber,
       unit_price: parseGermanMoney(unitPriceText),
       total_price: parseGermanMoney(totalPriceText)
-    });
+    }));
   }
 
   return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions: mergeDuplicatePositions(positions) };
