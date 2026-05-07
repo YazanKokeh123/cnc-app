@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Fragment, useState, useTransition } from "react";
-import { Check, ChevronDown, ChevronUp, Pencil, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Pencil, Plus, X } from "lucide-react";
 import clsx from "clsx";
 import { StatusBadge } from "@/components/status-badge";
 import { formatCurrency } from "@/lib/money";
@@ -20,7 +20,30 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
   const [drawingId, setDrawingId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [addError, setAddError] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  async function createPosition(formData: FormData) {
+    setSavingId("new");
+    setAddError(false);
+
+    const response = await fetch(`/api/orders/${orderId}/positions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(formData))
+    });
+
+    setSavingId(null);
+
+    if (!response.ok) {
+      setAddError(true);
+      return;
+    }
+
+    setIsAdding(false);
+    startTransition(() => router.refresh());
+  }
 
   async function savePosition(positionId: string, formData: FormData) {
     setSavingId(positionId);
@@ -46,55 +69,33 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
   return (
     <section className="overflow-x-auto rounded border border-slate-200 bg-white shadow-panel">
       <div className="min-w-[1080px]">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
+          <h2 className="text-sm font-semibold text-graphite">Positionen</h2>
+          <button type="button" onClick={() => setIsAdding(true)} className="inline-flex h-9 items-center gap-2 rounded bg-graphite px-3 text-sm font-semibold text-white hover:bg-steel">
+            <Plus size={15} /> Position hinzufuegen
+          </button>
+        </div>
+        {isAdding ? (
+          <PositionEditor
+            mode="create"
+            disabled={savingId === "new" || isPending}
+            error={addError ? "Position konnte nicht angelegt werden." : null}
+            onCancel={() => setIsAdding(false)}
+            onSubmit={createPosition}
+          />
+        ) : null}
         <div className="grid grid-cols-[70px_100px_1fr_170px_130px_210px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-steel"><span>Pos</span><span>Menge</span><span>Beschreibung</span><span>Zeichnung</span><span>Preis</span><span>Status</span></div>
         {positions.map((position) => (
           <Fragment key={position.id}>
             {editingId === position.id ? (
-              <form action={(formData) => savePosition(position.id, formData)} className="grid grid-cols-[70px_130px_1fr_170px_130px_230px] items-start gap-3 border-b border-slate-100 px-4 py-4 text-sm">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Pos
-                  <input name="pos_number" defaultValue={position.pos_number} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-semibold normal-case tracking-normal text-graphite" />
-                </label>
-                <div className="grid grid-cols-[1fr_54px] gap-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                    Menge
-                    <input name="quantity" inputMode="decimal" defaultValue={formatNumberInput(position.quantity)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                  </label>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                    EH
-                    <input name="unit" defaultValue={position.unit} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                  </label>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                    Beschreibung
-                    <textarea name="description" defaultValue={position.description} rows={2} className="mt-1 w-full resize-y rounded border border-slate-300 px-2 py-2 text-sm font-medium normal-case tracking-normal text-graphite" />
-                  </label>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                    Einzelpreis
-                    <input name="unit_price" inputMode="decimal" defaultValue={formatNumberInput(position.unit_price)} className="mt-1 h-9 w-36 rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                  </label>
-                </div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Zeichnung
-                  <input name="drawing_number" defaultValue={position.drawing_number ?? ""} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                </label>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                  Preis
-                  <input name="total_price" inputMode="decimal" defaultValue={formatNumberInput(position.total_price)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
-                </label>
-                <div className="flex flex-wrap items-end gap-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
-                    Status
-                    <select name="status" defaultValue={position.status} className="mt-1 h-9 rounded border border-slate-300 bg-white px-2 text-sm normal-case tracking-normal text-graphite">
-                      {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
-                  <button disabled={savingId === position.id || isPending} className="inline-flex h-9 items-center gap-2 rounded bg-signal px-3 text-xs font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"><Check size={14} />OK</button>
-                  <button type="button" onClick={() => setEditingId(null)} className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 px-3 text-xs font-semibold text-graphite hover:bg-slate-50"><X size={14} />Abbrechen</button>
-                  {errorId === position.id ? <p className="basis-full text-xs font-medium text-red-700">Speichern fehlgeschlagen.</p> : null}
-                </div>
-              </form>
+              <PositionEditor
+                mode="edit"
+                position={position}
+                disabled={savingId === position.id || isPending}
+                error={errorId === position.id ? "Speichern fehlgeschlagen." : null}
+                onCancel={() => setEditingId(null)}
+                onSubmit={(formData) => savePosition(position.id, formData)}
+              />
             ) : (
               <div className="grid grid-cols-[70px_100px_1fr_170px_130px_210px] items-center border-b border-slate-100 px-4 py-4 text-sm">
                 <span className={clsx("font-semibold", isFinishingPosition(position) ? "text-emerald-700" : "text-graphite")}>{position.pos_number}</span>
@@ -129,6 +130,65 @@ export function PositionTable({ orderId, positions }: { orderId: string; positio
         ))}
       </div>
     </section>
+  );
+}
+
+type PositionEditorProps = {
+  mode: "create" | "edit";
+  position?: OrderPosition;
+  disabled: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onSubmit: (formData: FormData) => void;
+};
+
+function PositionEditor({ mode, position, disabled, error, onCancel, onSubmit }: PositionEditorProps) {
+  return (
+    <form action={onSubmit} className="grid grid-cols-[70px_130px_1fr_170px_130px_230px] items-start gap-3 border-b border-slate-100 bg-slate-50 px-4 py-4 text-sm">
+      <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+        Pos
+        <input name="pos_number" required defaultValue={position?.pos_number ?? ""} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm font-semibold normal-case tracking-normal text-graphite" />
+      </label>
+      <div className="grid grid-cols-[1fr_54px] gap-2">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+          Menge
+          <input name="quantity" required inputMode="decimal" defaultValue={formatNumberInput(position?.quantity ?? 1)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
+        </label>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+          EH
+          <input name="unit" defaultValue={position?.unit ?? "ST"} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
+        </label>
+      </div>
+      <div className="space-y-2">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+          Beschreibung
+          <textarea name="description" required defaultValue={position?.description ?? ""} rows={2} className="mt-1 w-full resize-y rounded border border-slate-300 px-2 py-2 text-sm font-medium normal-case tracking-normal text-graphite" />
+        </label>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+          Einzelpreis
+          <input name="unit_price" inputMode="decimal" defaultValue={formatNumberInput(position?.unit_price ?? null)} className="mt-1 h-9 w-36 rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
+        </label>
+      </div>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+        Zeichnung
+        <input name="drawing_number" defaultValue={position?.drawing_number ?? ""} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
+      </label>
+      <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+        Preis
+        <input name="total_price" inputMode="decimal" defaultValue={formatNumberInput(position?.total_price ?? null)} className="mt-1 h-9 w-full rounded border border-slate-300 px-2 text-sm normal-case tracking-normal text-graphite" />
+      </label>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block text-xs font-semibold uppercase tracking-wide text-steel">
+          Status
+          <select name="status" defaultValue={position?.status ?? "open"} className="mt-1 h-9 rounded border border-slate-300 bg-white px-2 text-sm normal-case tracking-normal text-graphite">
+            {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <button disabled={disabled} className="inline-flex h-9 items-center gap-2 rounded bg-signal px-3 text-xs font-semibold text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60"><Check size={14} />{mode === "create" ? "Anlegen" : "OK"}</button>
+        <button type="button" onClick={onCancel} className="inline-flex h-9 items-center gap-2 rounded border border-slate-300 bg-white px-3 text-xs font-semibold text-graphite hover:bg-slate-50"><X size={14} />Abbrechen</button>
+        {error ? <p className="basis-full text-xs font-medium text-red-700">{error}</p> : null}
+      </div>
+    </form>
   );
 }
 
