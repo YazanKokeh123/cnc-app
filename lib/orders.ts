@@ -61,6 +61,28 @@ export async function createOrderFromParsed(parsed: ParsedOrder, sourcePdfPath: 
   return order as Order;
 }
 
+export async function createPositionFromFields(orderId: string, formData: FormData) {
+  const supabase = await createSupabaseServerClient();
+  const quantity = parseNumber(formData.get("quantity")) ?? 1;
+  const unitPrice = parseNumber(formData.get("unit_price"));
+  const totalPrice = parseNumber(formData.get("total_price")) ?? (unitPrice == null ? null : Number((unitPrice * quantity).toFixed(2)));
+  const status = parsePositionStatus(formData.get("status"));
+
+  const { error } = await supabase.from("order_positions").insert({
+    order_id: orderId,
+    pos_number: cleanText(formData.get("pos_number")) || nextManualPositionNumber(),
+    quantity,
+    unit: cleanText(formData.get("unit")) || "ST",
+    description: cleanText(formData.get("description")) || "Neue Position",
+    drawing_number: cleanText(formData.get("drawing_number")) || null,
+    unit_price: unitPrice,
+    total_price: totalPrice,
+    status
+  });
+
+  if (error) throw error;
+}
+
 export async function updateOrderFields(id: string, formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const delivered = formData.get("delivered") === "on";
@@ -124,6 +146,10 @@ function parseNumber(value: FormDataEntryValue | null) {
   const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
   const number = Number.parseFloat(normalized.replace(/[^\d.-]/g, ""));
   return Number.isFinite(number) ? number : null;
+}
+
+function nextManualPositionNumber() {
+  return "999";
 }
 
 function sortOrderPositions(order: Order): Order {
