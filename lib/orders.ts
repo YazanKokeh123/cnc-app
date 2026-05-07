@@ -12,7 +12,7 @@ export async function listOrders(): Promise<Order[]> {
     .order("delivery_deadline", { ascending: true, nullsFirst: false });
 
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []).map(sortOrderPositions);
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
@@ -29,7 +29,7 @@ export async function getOrder(id: string): Promise<Order | null> {
     throw error;
   }
 
-  return data;
+  return sortOrderPositions(data);
 }
 
 export async function createOrderFromParsed(parsed: ParsedOrder, sourcePdfPath: string | null) {
@@ -124,4 +124,20 @@ function parseNumber(value: FormDataEntryValue | null) {
   const normalized = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
   const number = Number.parseFloat(normalized.replace(/[^\d.-]/g, ""));
   return Number.isFinite(number) ? number : null;
+}
+
+function sortOrderPositions(order: Order): Order {
+  return {
+    ...order,
+    positions: [...(order.positions ?? [])].sort(comparePositions)
+  };
+}
+
+function comparePositions(left: OrderPosition, right: OrderPosition) {
+  return firstPositionNumber(left.pos_number) - firstPositionNumber(right.pos_number) || left.pos_number.localeCompare(right.pos_number);
+}
+
+function firstPositionNumber(value: string) {
+  const match = value.match(/\d+/);
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
 }

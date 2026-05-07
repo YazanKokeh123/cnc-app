@@ -127,25 +127,6 @@ function isPageNoise(item: PdfTextItem) {
   return isFooterText(item.text) || /^(Seite|Page)\b/i.test(item.text) || /Heinz Berger Maschinenfabrik/i.test(item.text);
 }
 
-function mergeDuplicatePositions(positions: ParsedOrderPosition[]) {
-  const merged = new Map<string, ParsedOrderPosition>();
-  for (const position of positions) {
-    const key = [position.description.toLowerCase().replace(/\s+/g, " ").trim(), position.drawing_number?.toLowerCase().replace(/\s+/g, "") ?? ""].join("|");
-    const existing = merged.get(key);
-    if (!existing) {
-      merged.set(key, { ...position });
-      continue;
-    }
-    existing.pos_number = `${existing.pos_number}, ${position.pos_number}`;
-    existing.quantity += position.quantity;
-    existing.total_price = (existing.total_price ?? 0) + (position.total_price ?? 0);
-    if (existing.total_price !== null && existing.quantity > 0) {
-      existing.unit_price = Number((existing.total_price / existing.quantity).toFixed(2));
-    }
-  }
-  return [...merged.values()];
-}
-
 function compareItemPosition(left: PdfTextItem, right: PdfTextItem) {
   return left.stream - right.stream || left.y - right.y || left.x - right.x;
 }
@@ -210,7 +191,7 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
     }));
   }
 
-  return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions: mergeDuplicatePositions(positions) };
+  return { orderDate: toIsoDate(orderHeaderDate), deliveryDeadline: deliveryDates.map(toIsoDate).filter(Boolean).sort()[0] ?? null, positions };
 }
 
 export async function parseOrderPdf(buffer: Buffer): Promise<ParsedOrder> {
@@ -221,7 +202,7 @@ export async function parseOrderPdf(buffer: Buffer): Promise<ParsedOrder> {
   const orderNumber = findFirst(text, [/Bestellung\s+(\d+)/i, /Bestell(?:ung|nummer|[\s-]*Nr\.?)\s*:?\s*([A-Z0-9\-/]+)/i, /Auftrags(?:nummer|[\s-]*Nr\.?)\s*:?\s*([A-Z0-9\-/]+)/i, /Unsere Bestellung\s*:?\s*([A-Z0-9\-/]+)/i]);
   const orderDate = heinzBerger?.orderDate ?? toIsoDate(findFirst(text, [/Bestellung\s+\d+\s+vom\s+(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Bestelldatum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Datum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i]));
   const deliveryDeadline = heinzBerger?.deliveryDeadline ?? toIsoDate(findFirst(text, [/Liefertermin\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i, /Lieferdatum\s*:?\s*(\d{1,2}\.\d{1,2}\.\d{2,4})/i]));
-  const positions = heinzBerger?.positions.length ? heinzBerger.positions : mergeDuplicatePositions(extractLinePositions(text));
+  const positions = heinzBerger?.positions.length ? heinzBerger.positions : extractLinePositions(text);
 
   return { customer_name: extractCustomer(text), order_number: orderNumber || `PDF-${Date.now()}`, order_date: orderDate, delivery_deadline: deliveryDeadline, positions };
 }
