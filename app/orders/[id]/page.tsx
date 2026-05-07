@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Download, FileText } from "lucide-react";
+import { DocumentActions } from "@/components/document-actions";
 import { OrderFieldsForm } from "@/components/order-fields-form";
 import { PositionTable } from "@/components/position-table";
 import { formatDate, isDeadlineWarning } from "@/lib/date";
@@ -25,10 +25,7 @@ export default async function OrderDetailPage({ params }: Props) {
           <h1 className="mt-3 text-2xl font-semibold text-graphite">Bestellung {order.order_number}</h1>
           <p className="mt-1 text-sm text-steel">{order.customer_name}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <a href={`/api/orders/${order.id}/document/rechnung`} className="inline-flex h-10 items-center gap-2 rounded border border-slate-200 bg-white px-3 text-sm font-semibold text-graphite shadow-panel hover:bg-slate-50"><FileText size={17} />Rechnung</a>
-          <a href={`/api/orders/${order.id}/document/lieferschein`} className="inline-flex h-10 items-center gap-2 rounded bg-graphite px-3 text-sm font-semibold text-white shadow-panel hover:bg-black"><Download size={17} />Lieferschein</a>
-        </div>
+        <DocumentActions orderId={order.id} orderNumber={order.order_number} />
       </div>
 
       {isDeadlineWarning(order.delivery_deadline) && !order.delivered ? (
