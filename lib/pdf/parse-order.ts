@@ -113,10 +113,12 @@ function isDrawingNumber(value: string) {
 }
 
 function finalizePosition(position: ParsedOrderPosition): ParsedOrderPosition {
-  if ((!position.unit_price || position.unit_price === 0) && position.total_price && position.quantity > 0) {
-    return { ...position, unit_price: Number((position.total_price / position.quantity).toFixed(2)) };
+  const description = position.description || position.drawing_number || `Position ${position.pos_number}`;
+  const normalizedPosition = { ...position, description };
+  if ((!normalizedPosition.unit_price || normalizedPosition.unit_price === 0) && normalizedPosition.total_price && normalizedPosition.quantity > 0) {
+    return { ...normalizedPosition, unit_price: Number((normalizedPosition.total_price / normalizedPosition.quantity).toFixed(2)) };
   }
-  return position;
+  return normalizedPosition;
 }
 
 function isFooterText(text: string) {
@@ -179,7 +181,6 @@ function parsePositionedHeinzBerger(items: PdfTextItem[]) {
     const priceItems = priceLine ? contentBlock.filter((item) => item.stream === priceLine.stream && Math.abs(item.y - priceLine.y) <= 3) : [];
     const unitPriceText = priceItems.filter((item) => item.x >= 1560 && item.x <= 1645 && /^[\d,]+$/.test(item.text.trim())).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
     const totalPriceText = priceItems.filter((item) => item.x >= 2100 && item.x <= 2240 && /[\d,]/.test(item.text)).sort((a, b) => a.y - b.y || a.x - b.x).map((item) => item.text.trim()).join("");
-    if (!description) continue;
     positions.push(finalizePosition({
       pos_number: start.text,
       quantity: Number.parseFloat((quantityText ?? "0").replace(",", ".")) || 0,
