@@ -149,7 +149,10 @@ function isBeforeNextPosition(item: PdfTextItem, nextStart: PdfTextItem | undefi
 function isHeinzBergerPositionStart(item: PdfTextItem, pageItems: PdfTextItem[]) {
   if (item.x < 80 || item.x > 145 || item.y < 350 || !/^\d{1,4}$/.test(item.text)) return false;
   const sameLine = pageItems.filter((candidate) => candidate.stream === item.stream && Math.abs(candidate.y - item.y) <= 3);
-  return sameLine.some((candidate) => candidate.x >= 420 && candidate.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(candidate.text.trim())) && sameLine.some((candidate) => candidate.x >= 430 && candidate.x <= 525 && /ST|St/i.test(candidate.text)) && sameLine.some((candidate) => candidate.x >= 560 && candidate.x <= 1300);
+  const hasQuantity = sameLine.some((candidate) => candidate.x >= 420 && candidate.x <= 490 && /^\d+(?:[,.]\d+)?$/.test(candidate.text.trim()));
+  const hasUnit = sameLine.some((candidate) => candidate.x >= 430 && candidate.x <= 525 && /ST|St/i.test(candidate.text));
+  const hasPositionData = sameLine.some((candidate) => candidate.x >= 560 && candidate.x <= 1760 && (candidate.text.trim().length > 0 || isDrawingNumber(candidate.text)));
+  return hasQuantity && hasUnit && hasPositionData;
 }
 
 function parsePositionedHeinzBerger(items: PdfTextItem[]) {
