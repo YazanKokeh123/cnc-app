@@ -6,21 +6,30 @@ const positionStatuses: PositionStatus[] = ["open", "in_progress", "done"];
 export async function listOrders(): Promise<Order[]> {
   if (!hasSupabaseConfig()) return [];
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data: orders, error } = await supabase
     .from("orders")
-    .select("*, positions:order_positions(*)")
+    .select("*")
     .order("delivery_deadline", { ascending: true, nullsFirst: false });
 
   if (error) throw error;
-  return (data ?? []).map(sortOrderPositions);
+  if (!orders?.length) return [];
+
+  const orderIds = orders.map((order) => order.id);
+  const { data: positions, error: positionsError } = await supabase
+    .from("order_positions")
+    .select("*")
+    .in("order_id", orderIds);
+
+  if (positionsError) throw positionsError;
+  return orders.map((order) => sortOrderPositions({ ...order, positions: positionsForOrder(positions ?? [], order.id) }));
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
   if (!hasSupabaseConfig()) return null;
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data: order, error } = await supabase
     .from("orders")
-    .select("*, positions:order_positions(*)")
+    .select("*")
     .eq("id", id)
     .single();
 
@@ -29,7 +38,13 @@ export async function getOrder(id: string): Promise<Order | null> {
     throw error;
   }
 
-  return sortOrderPositions(data);
+  const { data: positions, error: positionsError } = await supabase
+    .from("order_positions")
+    .select("*")
+    .eq("order_id", id);
+
+  if (positionsError) throw positionsError;
+  return sortOrderPositions({ ...order, positions: positions ?? [] });
 }
 
 export async function createOrderFromParsed(parsed: ParsedOrder, sourcePdfPath: string | null) {
@@ -150,6 +165,10 @@ function parseNumber(value: FormDataEntryValue | null) {
 
 function nextManualPositionNumber() {
   return "999";
+}
+
+function positionsForOrder(positions: OrderPosition[], orderId: string) {
+  return positions.filter((position) => position.order_id === orderId);
 }
 
 function sortOrderPositions(order: Order): Order {
